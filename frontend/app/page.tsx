@@ -300,7 +300,7 @@ export default function Home() {
         const contractText = submitData.is_contract ? ' (via Smart Contract)' : '';
         setMessage({ 
           type: 'success', 
-          text: `${depositAmount} XLM commission deposited${contractText}! $1000 simulation started.` 
+          text: `${depositAmount} XLM commission deposited${contractText}! $100 simulation started.` 
         });
         setShowDepositModal(false);
         fetchUserStatus();
@@ -634,7 +634,7 @@ export default function Home() {
     <div className="container">
       <header className="header">
         <h1>🐋 Profit Sharing Platform</h1>
-        <p>Follow trading bots, simulate with $1000 virtual balance, pay commission only on profits!</p>
+        <p>Follow trading bots, simulate with $100 virtual balance, pay commission only on profits!</p>
       </header>
 
       {message && (
@@ -738,7 +738,7 @@ export default function Home() {
             const activeBotInfo = getActiveBotInfo(bot.id);
             const isActive = !!activeBotInfo;
             const isAccessible = activeBotInfo?.is_accessible ?? false;
-            const isExpanded = expandedBot === bot.id;
+            const isExpanded = isActive || expandedBot === bot.id;  // Auto-expand when active
             
             return (
               <div key={bot.id} className="bot-card" style={{ 
@@ -946,7 +946,7 @@ export default function Home() {
                           </tbody>
                           <tfoot style={{ background: '#f9fafb', fontWeight: 'bold', fontSize: '0.75rem' }}>
                             <tr>
-                              <td colSpan={2} style={{ padding: '0.4rem', textAlign: 'left' }}>TOPLAM</td>
+                              <td colSpan={2} style={{ padding: '0.4rem', textAlign: 'left' }}>TOTAL</td>
                               <td style={{ 
                                 padding: '0.4rem', 
                                 textAlign: 'right',
@@ -1013,7 +1013,7 @@ export default function Home() {
             <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
               <strong>🎮 What Happens?</strong>
               <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0, fontSize: '0.9rem' }}>
-                <li>Simulation starts with $1000 virtual balance</li>
+                <li>Simulation starts with $100 virtual balance</li>
                 <li>Daily random returns between -3% and +5%</li>
                 <li>Commission deducted only on profitable days</li>
                 <li>Bot access closes when commission balance is depleted</li>

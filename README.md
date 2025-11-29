@@ -1,206 +1,288 @@
-# 🐋 Profit Sharing App
+# 🐋 Whaleer.com - Profit Sharing Demo
 
-A profit-sharing web application that uses a Next.js frontend and Python backend, integrating with the Stellar blockchain (testnet) for handling commission deposits.
+> **A demonstration of how Whaleer.com's profit-sharing system works using Stellar blockchain and Soroban smart contracts**
 
-## Overview
+This project demonstrates the commission flow and profit-sharing mechanism that powers [Whaleer.com](https://whaleer.com) - a platform where expert traders ("whales") share their trading signals with followers.
 
-This application demonstrates a profit-sharing mechanism where "whale" traders (experts) trade on behalf of users. The user's commission deposit is held on Stellar as a guarantee for profit-sharing. The whale takes a percentage of profits as commission.
+---
 
-### Architecture
+## 🎯 What is Whaleer.com?
+
+Whaleer.com connects **expert traders (Developers)** with **followers (Users)** through a transparent, blockchain-based profit-sharing system:
+
+- **Developers** create trading bots/signals and set their commission rate
+- **Users** follow these bots and pay commission only when profits are made
+- **Platform** takes a small cut (10% of developer's commission)
+- **Smart Contract** handles all commission distributions automatically
+
+---
+
+## 📊 Commission Flow Diagram
 
 ```
-┌─────────────────┐         ┌─────────────────┐         ┌──────────────────┐
-│   Next.js       │  API    │   Python/Flask  │ Stellar │   Stellar        │
-│   Frontend      │ ──────► │   Backend       │ ──────► │   Testnet        │
-│   (Port 3000)   │         │   (Port 5328)   │   SDK   │   Blockchain     │
-└─────────────────┘         └─────────────────┘         └──────────────────┘
+                                    PROFIT MADE ($100)
+                                          │
+                                          ▼
+                            ┌─────────────────────────────┐
+                            │   Developer sets rate: 10%  │
+                            │   Total commission: $10     │
+                            └─────────────────────────────┘
+                                          │
+                          ┌───────────────┴───────────────┐
+                          ▼                               ▼
+                  ┌──────────────┐                ┌──────────────┐
+                  │  Developer   │                │   Platform   │
+                  │    (90%)     │                │    (10%)     │
+                  │     $9       │                │     $1       │
+                  └──────────────┘                └──────────────┘
 ```
 
-- **Frontend (Next.js)**: Interactive UI for viewing bots, making deposits, and managing commissions
-- **Backend (Python/Flask)**: REST API handling Stellar blockchain operations
-- **Stellar Testnet**: Blockchain for secure commission deposits and settlements
+### Key Points:
+- **User pays**: Only from profits, never from principal
+- **Developer gets**: 90% of the commission they set
+- **Platform gets**: 10% of developer's commission (not user's money)
+- **Smart Contract**: Handles distribution trustlessly
 
-## Features
+---
 
-- 🤖 **Bot Listing**: View available trading bots with their strategies and performance
-- 💰 **Commission Deposits**: Deposit XLM to a bot's vault to start following
-- 📈 **Profit Simulation**: Simulate trading profits (for demo purposes)
-- 🔄 **Settlement**: Pay commission from deposit when profits are realized
-- 💸 **Withdrawal**: Withdraw remaining deposit at any time
-- 🔑 **Account Generation**: Generate Stellar testnet accounts with free XLM
+## 🏗️ System Architecture
 
-## Prerequisites
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER'S BROWSER                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                     Next.js Frontend (React)                         │    │
+│  │  • Wallet Connection (Freighter)                                     │    │
+│  │  • Bot Selection & Deposit                                           │    │
+│  │  • Daily Simulation & Receipts                                       │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ REST API
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           BACKEND SERVER                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    Python Flask API (Port 5328)                      │    │
+│  │  • Transaction Building                                              │    │
+│  │  • Real-time XLM Price (CoinGecko)                                   │    │
+│  │  • Profit Simulation                                                 │    │
+│  │  • Commission Calculation                                            │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ Stellar SDK
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        STELLAR BLOCKCHAIN (Testnet)                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    Soroban Smart Contract                            │    │
+│  │  • init_vault: Create user vault with commission rates               │    │
+│  │  • deposit: Lock XLM as commission reserve                           │    │
+│  │  • settle_profit: Distribute commission on profit                    │    │
+│  │  • withdraw: Return remaining balance to user                        │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  Contract ID: CBEZLTP6IW3KETVKHHQIZP6MV4N5ROD3O2YMXE3WPDBHWYO53UBDJDFI      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-- **Node.js** v18 or higher
-- **Python** 3.9 or higher
-- **npm** or **yarn**
+---
 
-## Installation
+## 💰 How It Works (Step by Step)
 
-### 1. Clone the repository
+### 1️⃣ User Deposits Commission Reserve
+```
+User ──────────────────────────────────────────────► Smart Contract
+         Deposit 100 XLM (commission reserve)
+         
+• This is NOT an investment, it's a reserve for future commissions
+• User keeps trading with their own capital elsewhere
+• XLM is locked in the smart contract vault
+```
+
+### 2️⃣ Daily Trading Simulation
+```
+Bot generates trading signals
+         │
+         ▼
+┌─────────────────────────────────────┐
+│ Day 1: +4.2% profit ($4.20)        │──► Commission: 0.42 XLM
+│ Day 2: -1.5% loss ($1.50)          │──► No commission (loss)
+│ Day 3: +2.8% profit ($2.80)        │──► Commission: 0.28 XLM
+│ Day 4: +5.1% profit ($5.10)        │──► Commission: 0.51 XLM
+│ ...                                 │
+└─────────────────────────────────────┘
+
+• Commission only charged on profits
+• High-Water Mark prevents double-charging
+• Real-time XLM/USD price from CoinGecko
+```
+
+### 3️⃣ Commission Distribution (On Each Profit)
+```
+                    Profit: $5.00
+                         │
+                         ▼
+              Total Commission: 10%
+                    = $0.50
+                         │
+            ┌────────────┴────────────┐
+            ▼                         ▼
+      Developer: 90%            Platform: 10%
+        = $0.45                   = $0.05
+        (≈1.76 XLM)              (≈0.20 XLM)
+            │                         │
+            ▼                         ▼
+    ┌───────────────┐        ┌───────────────┐
+    │ Developer     │        │ Platform      │
+    │ Wallet        │        │ Wallet        │
+    └───────────────┘        └───────────────┘
+```
+
+### 4️⃣ User Withdraws
+```
+Smart Contract ──────────────────────────────────► User
+                  Remaining balance (e.g., 87 XLM)
+                  
+• User can withdraw anytime
+• Only commission for realized profits is deducted
+• No lock-up period
+```
+
+---
+
+## 🔧 Technical Details
+
+### Smart Contract Functions
+
+| Function | Description | Parameters |
+|----------|-------------|------------|
+| `init_vault` | Create user's vault | bot_id, user_id, addresses, rates |
+| `deposit` | Lock XLM in vault | bot_id, user_id, amount |
+| `settle_profit` | Distribute commission | bot_id, user_id, profit_amount |
+| `withdraw` | Return remaining XLM | bot_id, user_id |
+
+### Commission Calculation (BPS = Basis Points)
+
+```rust
+// In Smart Contract
+let total_commission = profit_amount * profit_share_bps / 10000;
+let platform_fee = total_commission * platform_cut_bps / 10000;
+let developer_fee = total_commission - platform_fee;
+```
+
+Example with 10% developer rate:
+- `profit_share_bps = 1000` (10%)
+- `platform_cut_bps = 1000` (10% of commission)
+- On 100 XLM profit:
+  - Total commission: 10 XLM
+  - Platform: 1 XLM
+  - Developer: 9 XLM
+
+---
+
+## 🚀 Running the Demo
+
+### Prerequisites
+- Node.js v18+
+- Python 3.9+
+- [Freighter Wallet](https://freighter.app/) browser extension
+
+### Installation
 
 ```bash
-git clone <repository-url>
+# Clone the repository
+git clone https://github.com/Apollous1592/Stellar-Hackathon-Project-Whaleer.com.git
 cd "Stellar Alternative"
-```
 
-### 2. Install Frontend Dependencies
-
-```bash
+# Install frontend
 cd frontend
 npm install
-```
 
-### 3. Install Backend Dependencies
-
-```bash
-cd api
+# Install backend
+cd ../api
 pip install -r requirements.txt
 ```
 
-## Running the Application
+### Running
 
-You need to run both the frontend and backend simultaneously.
-
-### Terminal 1: Start the Python Backend
-
+**Terminal 1 - Backend:**
 ```bash
 cd api
 python index.py
+# Runs on http://127.0.0.1:5328
 ```
 
-The backend will:
-- Initialize Stellar accounts for each trading bot
-- Fund vault accounts via Stellar Friendbot
-- Start listening on `http://127.0.0.1:5328`
-
-### Terminal 2: Start the Next.js Frontend
-
+**Terminal 2 - Frontend:**
 ```bash
 cd frontend
 npm run dev
+# Runs on http://localhost:3000
 ```
 
-The frontend will start at `http://localhost:3000`
+### Using the Demo
 
-### Access the Application
+1. **Connect Wallet**: Click "Connect Freighter" (use Stellar Testnet)
+2. **Select Bot**: Choose a trading bot to follow
+3. **Deposit**: Deposit XLM as commission reserve
+4. **Simulate**: Click "Simulate Day" to see daily P&L
+5. **Watch**: See commission distributed in real-time
+6. **Withdraw**: Take back remaining balance anytime
 
-Open your browser and navigate to: **http://localhost:3000**
+---
 
-## Usage Guide
-
-### 1. Generate a Test Account
-
-Click **"Generate New Test Account"** to create a Stellar testnet account funded with 10,000 XLM.
-
-> ⚠️ **Save your secret key!** It won't be shown again. This is for testnet only.
-
-### 2. Deposit Commission
-
-1. Choose a trading bot from the list
-2. Click **"Deposit Commission"**
-3. Confirm the deposit amount (default: required deposit)
-4. The transaction will be processed on Stellar testnet
-
-### 3. Simulate Trading
-
-Once you have an active deposit:
-1. Use the **"+5% Profit"**, **"+10% Profit"**, or **"-3% Loss"** buttons
-2. Watch your simulated balance and profit change
-
-### 4. Settle Commission
-
-Click **"Settle"** to pay the whale their commission from your deposit:
-- Commission = Profit × Commission Rate (e.g., 10%)
-- The commission is transferred on Stellar blockchain
-
-### 5. Withdraw Remaining Deposit
-
-Click **"Withdraw"** to:
-- Receive remaining deposit back to your Stellar account
-- End your engagement with that bot
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/bots` | GET | List available trading bots |
-| `/generate-account` | POST | Generate and fund a new testnet account |
-| `/deposit` | POST | Deposit commission to a bot's vault |
-| `/status` | GET | Get user's status and active bots |
-| `/simulate-profit` | POST | Simulate profit/loss for testing |
-| `/settle` | POST | Settle commission payment |
-| `/withdraw` | POST | Withdraw remaining deposit |
-| `/health` | GET | Health check |
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 Stellar Alternative/
-├── frontend/                 # Next.js application
+├── frontend/                 # Next.js React Application
 │   ├── app/
-│   │   ├── globals.css      # Global styles
-│   │   ├── layout.tsx       # Root layout
-│   │   └── page.tsx         # Main page component
-│   ├── next.config.js       # API proxy configuration
+│   │   ├── page.tsx         # Main UI component
+│   │   ├── layout.tsx       # App layout
+│   │   └── globals.css      # Styles
 │   ├── package.json
-│   └── tsconfig.json
+│   └── next.config.js       # API proxy config
 │
-├── api/                      # Python Flask backend
-│   ├── index.py             # Main API server
-│   └── requirements.txt     # Python dependencies
+├── api/                      # Python Flask Backend
+│   ├── index.py             # Main API + Stellar integration
+│   ├── requirements.txt     # Python dependencies
+│   └── vault_keys.json      # Testnet keys (gitignored)
+│
+├── stellar-rs/              # Soroban Smart Contract (Rust)
+│   ├── src/lib.rs          # Contract logic
+│   └── Cargo.toml          # Rust dependencies
 │
 └── README.md
 ```
 
-## How Commission Works
+---
 
-1. **Deposit**: User deposits XLM (e.g., $50 worth) to the bot's vault
-2. **Trading**: Whale trades on user's behalf (simulated in this demo)
-3. **Profit**: If trades are profitable, commission is calculated
-4. **Settlement**: Commission (e.g., 10% of profits) is paid to whale
-5. **Withdrawal**: User can withdraw remaining deposit anytime
+## 🔐 Security Notes
 
-### Example Scenario
+⚠️ **This is a TESTNET demo** - No real funds are involved
 
-1. Alice deposits 50 XLM to Bot Alpha
-2. Simulated trading generates $250 profit (5% of $5000)
-3. Commission due: $25 (10% of $250)
-4. Settlement transfers 25 XLM from vault to whale
-5. Remaining deposit: 25 XLM
-6. Alice can withdraw 25 XLM or continue trading
+- Uses Stellar Testnet (fake XLM)
+- Smart contract is for demonstration only
+- In production, Whaleer.com uses additional security measures
 
-## Security Notes
+---
 
-⚠️ **TESTNET ONLY**: This application uses Stellar testnet. No real funds are involved.
+## 🌐 Links
 
-- Never use testnet keys on mainnet
-- Secret keys are stored in browser localStorage (development only)
-- In production, use proper key management and authentication
+- **Whaleer.com**: [https://whaleer.com](https://whaleer.com)
+- **Stellar**: [https://stellar.org](https://stellar.org)
+- **Soroban Docs**: [https://soroban.stellar.org](https://soroban.stellar.org)
+- **Freighter Wallet**: [https://freighter.app](https://freighter.app)
 
-## Stellar Testnet Resources
+---
 
-- [Stellar Laboratory](https://laboratory.stellar.org/) - Test transactions and accounts
-- [Friendbot](https://friendbot.stellar.org/) - Fund testnet accounts
-- [Horizon Testnet](https://horizon-testnet.stellar.org/) - API explorer
+## 📝 License
 
-## Troubleshooting
+MIT License - Built for Stellar Hackathon 2025
 
-### Backend won't start
-- Ensure Python 3.9+ is installed
-- Install dependencies: `pip install -r requirements.txt`
-- Check if port 5328 is available
+---
 
-### Frontend API calls fail
-- Ensure backend is running on port 5328
-- Check `next.config.js` has correct rewrite rules
-- Look for CORS errors in browser console
-
-### Stellar transactions fail
-- Ensure account is funded via Friendbot
-- Check if account has enough XLM for fees
-- Verify you're using testnet secret keys
-
-## License
-
-MIT License - feel free to use and modify for your own projects.
+<p align="center">
+  <b>🐋 Whaleer.com - Follow the Whales, Share the Profits 🐋</b>
+</p>
