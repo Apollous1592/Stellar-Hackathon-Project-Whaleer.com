@@ -1,11 +1,10 @@
-# 🐋 Whaleer Profit-Sharing Protocol
+🐋 Whaleer Profit-Sharing Protocol
 
-### On-Chain Profit Sharing for Trading Bots Using 3-Wallet Revenue Split + High-Water Mark Fee Model
-### Powered by Stellar Soroban Smart Contracts
+On-Chain Profit Sharing for Trading Bots Using 3-Wallet Revenue Split + High-Water Mark Fee Model
+Powered by Stellar Soroban Smart Contracts
 
 ---
-
-## 🚀 1. Overview
+1. Overview
 
 Trading bots generate millions in profits every day — but developers, platforms, and users lack a fair, automated, and transparent revenue-sharing mechanism.
 
@@ -18,16 +17,15 @@ Trading bots generate millions in profits every day — but developers, platform
 
 **Whaleer Profit-Sharing Protocol solves this.**
 
-### ✅ What This Protocol Enables
+### What This Protocol Enables
 - 3-way automated commission distribution
 - High-Water Mark (HWM) based performance fee
 - Fully on-chain deposit / withdraw
 - Freighter-based non-custodial signing
 - Automated fee distribution via Soroban Smart Contracts
 
----
 
-## 🧩 2. System Architecture
+2. System Architecture
 
 ### 2.1 Three-Wallet Revenue Model
 
@@ -46,22 +44,22 @@ Trading bots generate millions in profits every day — but developers, platform
                                 │
           ┌─────────────────────┴─────────────────────┐
           │                                           │
-┌─────────┴──────────┐                     ┌─────────┴──────────┐
+┌─────────┴──────────-┐                     ┌─────────┴──────────┐
 │     User Wallet     │                     │  Developer Wallet  │
 │ (commission deposit)│                     │   (revenue share)  │
 └─────────────────────┘                     └────────────────────┘
-```
+
 
 ### 2.2 Full System Flow
 
-```
+
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              USER'S BROWSER                                  │
+│                              USER'S BROWSER                                 │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                     Next.js Frontend (React)                         │    │
-│  │  • Wallet Connection (Freighter)                                     │    │
-│  │  • Bot Selection & Deposit                                           │    │
-│  │  • Daily Simulation & Receipts                                       │    │
+│  │    Next.js Frontend (React)                                         │    │
+│  │  • Wallet Connection (Freighter)                                    │    │
+│  │  • Bot Selection & Deposit                                          │    │
+│  │  • Daily Simulation & Receipts                                      │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -74,13 +72,13 @@ Trading bots generate millions in profits every day — but developers, platform
                                       │ Signed XDR
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           BACKEND SERVER                                     │
+│                           BACKEND SERVER                                    │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Python Flask API (Port 5328)                      │    │
-│  │  • XDR Transaction Building                                          │    │
-│  │  • Real-time XLM Price (CoinGecko)                                   │    │
-│  │  • High-Water Mark Tracking                                          │    │
-│  │  • Commission Calculation                                            │    │
+│  │                    Python Flask API (Port 5328)                     │    │
+│  │  • XDR Transaction Building                                         │    │
+│  │  • Real-time XLM Price (CoinGecko)                                  │    │
+│  │  • High-Water Mark Tracking                                         │    │
+│  │  • Commission Calculation                                           │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -102,7 +100,7 @@ Trading bots generate millions in profits every day — but developers, platform
 
 ---
 
-## 📈 3. High-Water Mark (HWM)
+## 3. High-Water Mark (HWM)
 
 A hedge-fund-grade performance fee model ensuring fairness.
 
@@ -135,7 +133,7 @@ Day 3:  $130 → Fee on +$10  → HWM = $130 (only new profit above $120)
 
 ---
 
-## 💰 4. Commission Model
+##  4. Commission Model
 
 ### Stakeholder Split
 
@@ -176,7 +174,7 @@ developer_fee = total_commission - platform_fee;
 
 ---
 
-## 🔒 5. Soroban Contract Functions
+## 5. Soroban Contract Functions
 
 | Function | Description | Signer |
 |----------|-------------|--------|
@@ -203,7 +201,7 @@ developer_fee = total_commission - platform_fee;
 
 ---
 
-## 🧠 6. Backend Architecture
+## 6. Backend Architecture
 
 ### Key Responsibilities
 - Create XDR transactions
@@ -227,7 +225,7 @@ developer_fee = total_commission - platform_fee;
 
 ---
 
-## 📊 7. Trading Simulation Engine
+## 7. Trading Simulation Engine
 
 Features:
 - Daily return between **−3% to +5%**
@@ -275,7 +273,7 @@ npm run dev
 
 ---
 
-## 📁 9. Project Structure
+## 9. Project Structure
 
 ```
 ├── frontend/                 # Next.js React Application
@@ -299,18 +297,18 @@ npm run dev
 
 ---
 
-## 🔐 10. Security
+## 10. Security
 
 - ✅ **Non-custodial signing** — User keys never leave Freighter
 - ✅ **No developer private key stored** — Backend only holds platform admin key
 - ✅ **On-chain transparency** — All transactions auditable
 - ✅ **Immutable fee flows** — Smart contract enforces rules
 
-⚠️ **TESTNET DEMO** — This uses Stellar Testnet, no real funds involved.
+**TESTNET DEMO** — This uses Stellar Testnet, no real funds involved.
 
 ---
 
-## 🏆 11. Why This Project Stands Out
+## 11. Why This Project Stands Out
 
 ### Innovation
 - **First 3-party revenue model on Soroban**
@@ -332,7 +330,7 @@ npm run dev
 
 ---
 
-## 🌐 12. Links
+## 12. Links
 
 - **Whaleer.com**: [https://whaleer.com](https://whaleer.com)
 - **Stellar**: [https://stellar.org](https://stellar.org)
@@ -341,7 +339,7 @@ npm run dev
 
 ---
 
-## 📝 License
+## License
 
 MIT License — Built for Stellar Hackathon 2025
 
