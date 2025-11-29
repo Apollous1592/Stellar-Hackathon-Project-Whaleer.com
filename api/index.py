@@ -14,6 +14,41 @@ from stellar_sdk.exceptions import NotFoundError, BadRequestError
 from decimal import Decimal
 import random
 import time
+import requests
+
+# ============== XLM PRICE CACHE ==============
+xlm_price_cache = {
+    'price': 0.40,  # fallback price
+    'last_updated': 0
+}
+
+def get_xlm_usd_price():
+    """Fetch real-time XLM/USD price from CoinGecko API with 60s cache"""
+    global xlm_price_cache
+    
+    # Cache for 60 seconds to avoid rate limiting
+    if time.time() - xlm_price_cache['last_updated'] < 60:
+        return xlm_price_cache['price']
+    
+    try:
+        # CoinGecko free API - no key needed
+        response = requests.get(
+            'https://api.coingecko.com/api/v3/simple/price',
+            params={'ids': 'stellar', 'vs_currencies': 'usd'},
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            price = data.get('stellar', {}).get('usd', 0.40)
+            xlm_price_cache['price'] = price
+            xlm_price_cache['last_updated'] = time.time()
+            print(f"[XLM PRICE] Updated: ${price:.4f}")
+            return price
+    except Exception as e:
+        print(f"[XLM PRICE] Error fetching price: {e}")
+    
+    # Return cached or fallback price
+    return xlm_price_cache['price']
 
 app = Flask(__name__)
 CORS(app)
@@ -672,7 +707,8 @@ def simulate_day():
         
         high_water_mark = bot_session.get('high_water_mark', bot_session['starting_balance'])
         
-        xlm_usd_rate = 0.40
+        # Get real-time XLM/USD price
+        xlm_usd_rate = get_xlm_usd_price()
         total_commission_xlm = 0
         developer_commission_xlm = 0
         platform_commission_xlm = 0
