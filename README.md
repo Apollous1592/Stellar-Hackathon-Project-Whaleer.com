@@ -45,7 +45,7 @@ Trading bots generate millions in profits every day — but developers, platform
 
 Soroban smart contracts **cannot** directly access external data (like trading bot profits). They are isolated and deterministic by design. To bridge this gap, we use an **Oracle pattern**:
 
-![Oracle Pattern](assets/image4.png)
+![Oracle Pattern](assets/image4.png?v=2)
 
 ### How It Works
 
