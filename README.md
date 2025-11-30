@@ -30,24 +30,27 @@ Trading bots generate millions in profits every day — but developers, platform
 ### 2.1 Three-Wallet Revenue Model
 
 ```
-                   ┌────────────────────────┐
-                   │     Platform Wallet    │
-                   │    (platform revenue)  │
-                   └────────────▲───────────┘
-                                │ 10% of Commission
-                                │
-                   ┌────────────┴───────────┐
-                   │ Soroban Smart Contract │
-                   │  (auto-fee settlement) │
-                   └────────────▲───────────┘
-                                │ 90% of Commission
-                                │
-          ┌─────────────────────┴─────────────────────┐
-          │                                           │
-┌─────────┴──────────-┐                     ┌─────────┴──────────┐
-│     User Wallet     │                     │  Developer Wallet  │
-│ (commission deposit)│                     │   (revenue share)  │
-└─────────────────────┘                     └────────────────────┘
+                    deposit for profit commission
++------------------+---------------------------+
+|    User Wallet   |                           |
++------------------+                           |
+                                               v
+                                   +-----------+-----------+
+                                   |   Soroban Smart       | 
+profit data  --------------->      |      Contract         |
++------------------+               |  (commission vault)   |
+|       Oracle     |               +-----------+-----------+
+|      (Whaleer)   |                          |
++------------------+              10% of commission   90% of commission
+                                              |                |
+                                              v                v
+                                  +----------------+  +--------------------+
+                                  | Platform Wallet|  |  Developer Wallet  |
+                                  | (platform rev.)|  |  (revenue share)   |
+                                  +----------------+  +--------------------+
+
+                      
+
 
 
 ### 2.2 Full System Flow
@@ -66,7 +69,7 @@ Trading bots generate millions in profits every day — but developers, platform
                                       │ XDR Transaction
                                       ▼
                               ┌───────────────┐
-                              │   Freighter   │
+                              │User Wallet Kit│
                               │ (User Signs)  │
                               └───────┬───────┘
                                       │ Signed XDR
@@ -119,16 +122,8 @@ Day 3:  $130 → Fee on +$10  → HWM = $130 (only new profit above $120)
 ```
 
 ```
-                    Balance
-        $130 ─ ─ ─ ─ ─ ─ ─ ─●─ ─ ─ ─ HWM Updated
-                          ╱
-        $120 ─ ─ ─●─ ─ ─ ╱─ ─ ─ ─ ─ HWM
-                 ╱     ╱
-        $100 ───●     ╱
-                 ╲   ╱
-         $90 ─ ─ ─●─ ─ ─ ─ ─ ─ ─ ─ No Fee (below HWM)
-              
-             Day1  Day2  Day3
+  <img width="1081" height="519" alt="image" src="https://github.com/user-attachments/assets/45057d3b-252b-4317-b195-33aa1ba7f896" />
+
 ```
 
 ---
@@ -189,7 +184,7 @@ developer_fee = total_commission - platform_fee;
 1. Backend creates unsigned XDR
           ↓
 2. Frontend sends XDR to Freighter
-          ↓
+          ↓>
 3. User signs locally (non-custodial)
           ↓
 4. Signed XDR sent back to backend
@@ -198,8 +193,6 @@ developer_fee = total_commission - platform_fee;
           ↓
 6. Smart contract executes fee logic
 ```
-
----
 
 ## 6. Backend Architecture
 
@@ -273,31 +266,7 @@ npm run dev
 
 ---
 
-## 9. Project Structure
-
-```
-├── frontend/                 # Next.js React Application
-│   ├── app/
-│   │   ├── page.tsx         # Main UI component
-│   │   ├── layout.tsx       # App layout
-│   │   └── globals.css      # Styles
-│   ├── package.json
-│   └── next.config.js       # API proxy config
-│
-├── api/                      # Python Flask Backend
-│   ├── index.py             # Main API + Stellar integration
-│   └── requirements.txt     # Python dependencies
-│
-├── stellar-rs/              # Soroban Smart Contract (Rust)
-│   ├── src/lib.rs          # Contract logic
-│   └── Cargo.toml          # Rust dependencies
-│
-└── README.md
-```
-
----
-
-## 10. Security
+## 9. Security
 
 - ✅ **Non-custodial signing** — User keys never leave Freighter
 - ✅ **No developer private key stored** — Backend only holds platform admin key
@@ -308,7 +277,7 @@ npm run dev
 
 ---
 
-## 11. Why This Project Stands Out
+## 10. Why This Project Stands Out
 
 ### Innovation
 - **First 3-party revenue model on Soroban**
@@ -330,7 +299,7 @@ npm run dev
 
 ---
 
-## 12. Links
+## 11. Links
 
 - **Whaleer.com**: [https://whaleer.com](https://whaleer.com)
 - **Stellar**: [https://stellar.org](https://stellar.org)
