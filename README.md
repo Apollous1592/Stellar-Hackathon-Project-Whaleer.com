@@ -60,7 +60,6 @@ Soroban smart contracts **cannot** directly access external data (like trading b
 | Challenge | Solution |
 |-----------|----------|
 | Contracts can't fetch external data | Oracle pushes verified data |
-| Need real-time price feeds | CoinGecko API integration |
 | Complex HWM calculations | Backend handles logic, contract enforces distribution |
 | Trust in Oracle | All transactions on-chain, verifiable |
 
