@@ -35,7 +35,7 @@ Trading bots generate millions in profits every day — but developers, platform
 
 ### 2.2 Full System Flow
 
-![Full System Flow](assets/image4.png)
+![Full System Flow](assets/image3.png)
 
 ---
 
@@ -45,20 +45,7 @@ Trading bots generate millions in profits every day — but developers, platform
 
 Soroban smart contracts **cannot** directly access external data (like trading bot profits). They are isolated and deterministic by design. To bridge this gap, we use an **Oracle pattern**:
 
-```
-┌─────────────────┐     Profit Data      ┌─────────────────┐
-│  Trading Bot    │ ───────────────────► │    Whaleer      │
-│  (External)     │                      │    Oracle       │
-└─────────────────┘                      │   (Backend)     │
-                                         └────────┬────────┘
-                                                  │
-                                                  │ settle_profit()
-                                                  ▼
-                                         ┌─────────────────┐
-                                         │ Soroban Smart   │
-                                         │   Contract      │
-                                         └─────────────────┘
-```
+![Oracle Pattern](assets/image4.png)
 
 ### How It Works
 
