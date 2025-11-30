@@ -29,81 +29,63 @@ Trading bots generate millions in profits every day — but developers, platform
 
 ### 2.1 Three-Wallet Revenue Model
 
-```
-                    deposit for profit commission
-+------------------+---------------------------+
-|    User Wallet   |                           |
-+------------------+                           |
-                                               v
-                                   +-----------+-----------+
-                                   |   Soroban Smart       | 
-profit data  --------------->      |      Contract         |
-+------------------+               |  (commission vault)   |
-|       Oracle     |               +-----------+-----------+
-|      (Whaleer)   |                          |
-+------------------+              10% of commission   90% of commission
-                                              |                |
-                                              v                v
-                                  +----------------+  +--------------------+
-                                  | Platform Wallet|  |  Developer Wallet  |
-                                  | (platform rev.)|  |  (revenue share)   |
-                                  +----------------+  +--------------------+
-
-                      
+![Three-Wallet Revenue Model](assets/image2.png)
 
 
 
 ### 2.2 Full System Flow
 
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              USER'S BROWSER                                 │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │    Next.js Frontend (React)                                         │    │
-│  │  • Wallet Connection (Freighter)                                    │    │
-│  │  • Bot Selection & Deposit                                          │    │
-│  │  • Daily Simulation & Receipts                                      │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      │ XDR Transaction
-                                      ▼
-                              ┌───────────────┐
-                              │User Wallet Kit│
-                              │ (User Signs)  │
-                              └───────┬───────┘
-                                      │ Signed XDR
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           BACKEND SERVER                                    │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Python Flask API (Port 5328)                     │    │
-│  │  • XDR Transaction Building                                         │    │
-│  │  • Real-time XLM Price (CoinGecko)                                  │    │
-│  │  • High-Water Mark Tracking                                         │    │
-│  │  • Commission Calculation                                           │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      │ Soroban RPC
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        STELLAR BLOCKCHAIN (Testnet)                          │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Soroban Smart Contract                            │    │
-│  │  • init_vault: Create user vault with commission rates               │    │
-│  │  • deposit: Lock XLM as commission reserve                           │    │
-│  │  • settle_profit: Distribute commission to dev + platform            │    │
-│  │  • withdraw: Return remaining balance to user                        │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                                                                              │
-│  Contract ID: CBEZLTP6IW3KETVKHHQIZP6MV4N5ROD3O2YMXE3WPDBHWYO53UBDJDFI      │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+![Full System Flow](assets/image3.png)
 
 ---
 
-## 3. High-Water Mark (HWM)
+## 3. Stellar Communication via Oracle
+
+### Why an Oracle?
+
+Soroban smart contracts **cannot** directly access external data (like trading bot profits). They are isolated and deterministic by design. To bridge this gap, we use an **Oracle pattern**:
+
+```
+┌─────────────────┐     Profit Data      ┌─────────────────┐
+│  Trading Bot    │ ───────────────────► │    Whaleer      │
+│  (External)     │                      │    Oracle       │
+└─────────────────┘                      │   (Backend)     │
+                                         └────────┬────────┘
+                                                  │
+                                                  │ settle_profit()
+                                                  ▼
+                                         ┌─────────────────┐
+                                         │ Soroban Smart   │
+                                         │   Contract      │
+                                         └─────────────────┘
+```
+
+### How It Works
+
+1. **Trading bots** report daily P&L to Whaleer backend
+2. **Backend (Oracle)** validates profit data and applies HWM logic
+3. **Oracle calls `settle_profit()`** on the smart contract
+4. **Contract distributes** commission to Developer + Platform wallets
+5. **All on-chain** — fully auditable and transparent
+
+### Why This Architecture?
+
+| Challenge | Solution |
+|-----------|----------|
+| Contracts can't fetch external data | Oracle pushes verified data |
+| Need real-time price feeds | CoinGecko API integration |
+| Complex HWM calculations | Backend handles logic, contract enforces distribution |
+| Trust in Oracle | All transactions on-chain, verifiable |
+
+### Oracle Security
+
+- Oracle only triggers `settle_profit()` — cannot withdraw user funds
+- User deposits/withdrawals require **user signature** (Freighter)
+- All commission flows are **immutable** once set in `init_vault()`
+
+---
+
+## 4. High-Water Mark (HWM)
 
 A hedge-fund-grade performance fee model ensuring fairness.
 
@@ -125,7 +107,7 @@ A hedge-fund-grade performance fee model ensuring fairness.
 
 ---
 
-##  4. Commission Model
+## 5. Commission Model
 
 ### Stakeholder Split
 
@@ -166,7 +148,7 @@ developer_fee = total_commission - platform_fee;
 
 ---
 
-## 5. Soroban Contract Functions
+## 6. Soroban Contract Functions
 
 | Function | Description | Signer |
 |----------|-------------|--------|
@@ -191,7 +173,7 @@ developer_fee = total_commission - platform_fee;
 6. Smart contract executes fee logic
 ```
 
-## 6. Backend Architecture
+## 7. Backend Architecture
 
 ### Key Responsibilities
 - Create XDR transactions
@@ -215,50 +197,48 @@ developer_fee = total_commission - platform_fee;
 
 ---
 
-## 7. Trading Simulation Engine
-
-Features:
-- Daily return between **−3% to +5%**
-- Full HWM logic implementation
-- Automatic fee deduction
-- Soroban settlement calls on profit
-- Fee depletion disables bot usage
-- Daily historical log with receipts
-
----
-
 ## 8. Installation & Running
 
 ### Prerequisites
 - Node.js v18+
 - Python 3.9+
-- [Freighter Wallet](https://freighter.app/) browser extension
+- Git
+- [Freighter Wallet](https://freighter.app/) browser extension (set to **Testnet**)
 
-### Backend Setup
+### Quick Start
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/Apollous1592/Stellar-Hackathon-Project-Whaleer.com.git
+cd Stellar-Hackathon-Project-Whaleer.com
+
+# 2. Start Backend (Terminal 1)
 cd api
 pip install -r requirements.txt
 python index.py
-# Runs on http://127.0.0.1:5328
-```
+# ✅ Backend running on http://127.0.0.1:5328
 
-### Frontend Setup
-
-```bash
+# 3. Start Frontend (Terminal 2)
 cd frontend
 npm install
 npm run dev
-# Runs on http://localhost:3000
+# ✅ Frontend running on http://localhost:3000
 ```
+
+### Get Testnet XLM
+
+1. Open [Stellar Laboratory](https://laboratory.stellar.org/#account-creator?network=test)
+2. Paste your Freighter wallet address
+3. Click **"Get test network lumens"**
+4. You'll receive 10,000 testnet XLM
 
 ### Using the Demo
 
-1. **Connect Wallet** → Click "Connect Freighter" (Stellar Testnet)
+1. **Connect Wallet** → Click "Connect Freighter" (ensure Testnet mode)
 2. **Select Bot** → Choose a trading bot to follow
-3. **Deposit** → Deposit XLM as commission reserve
+3. **Deposit** → Deposit XLM as commission reserve (min 5-10 XLM)
 4. **Simulate** → Click "Simulate Day" to see daily P&L
-5. **Watch** → See commission distributed in real-time
+5. **Watch** → See commission distributed to Developer & Platform
 6. **Withdraw** → Take back remaining balance anytime
 
 ---
