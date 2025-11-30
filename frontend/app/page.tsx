@@ -80,6 +80,7 @@ export default function Home() {
   const [depositAmount, setDepositAmount] = useState('10');
   const [topupAmount, setTopupAmount] = useState('5');
   const [freighterInstalled, setFreighterInstalled] = useState<boolean | null>(null);
+  const [autoConnectTried, setAutoConnectTried] = useState(false);
   const [xlmBalance, setXlmBalance] = useState<string | null>(null);
   const [expandedBot, setExpandedBot] = useState<string | null>(null);
   const [showReceipt, setShowReceipt] = useState<{
@@ -95,42 +96,101 @@ export default function Home() {
     commission_balance: number;
   } | null>(null);
 
-  // Check if Freighter is installed
+  // 1) Freighter var mı yok mu kontrolü
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
     const checkFreighter = async () => {
-      for (let i = 0; i < 5; i++) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // "Connecting..." state'i
+      setFreighterInstalled(null);
+
+      try {
+        // isConnected her zaman çalışıyor (Freighter olmasa bile false dönüyor)
+        // Bu yüzden getNetwork ile doğrulama yapıyoruz
+        const connResult = await isConnected();
+        
+        if (cancelled) return;
+        console.log("isConnected result:", connResult);
+
+        // Eğer zaten bağlıysa (isConnected: true), kesin yüklü
+        if (connResult?.isConnected === true) {
+          console.log("Freighter connected!");
+          setFreighterInstalled(true);
+          
+          const [addressResult, networkResult] = await Promise.all([
+            getAddress(),
+            getNetwork(),
+          ]);
+
+          if (addressResult?.address && !addressResult.error) {
+            setWallet({
+              isConnected: true,
+              publicKey: addressResult.address,
+              network: networkResult?.network || null,
+            });
+          }
+          return;
+        }
+
+        // isConnected false - Freighter yüklü mü değil mi emin değiliz
+        // getNetwork ile kontrol edelim - bu sadece Freighter yüklüyse çalışır
         try {
-          const connectionResult = await isConnected();
-          if (connectionResult && typeof connectionResult.isConnected !== 'undefined') {
+          const networkResult = await Promise.race([
+            getNetwork(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
+          ]);
+          
+          if (cancelled) return;
+          console.log("getNetwork result:", networkResult);
+
+          // Eğer network bilgisi geldiyse, Freighter yüklü ama bağlı değil
+          if (networkResult && (networkResult as any).network) {
+            console.log("Freighter installed but not connected");
             setFreighterInstalled(true);
-            if (connectionResult.isConnected) {
-              const addressResult = await getAddress();
-              const networkResult = await getNetwork();
-              if (addressResult.address && !addressResult.error) {
-                setWallet({ 
-                  isConnected: true, 
-                  publicKey: addressResult.address, 
-                  network: networkResult.network || null 
-                });
-              }
-            }
             return;
           }
-        } catch (e) {
-          console.log('Freighter check attempt', i + 1, e);
+        } catch (netErr) {
+          console.log("getNetwork failed:", netErr);
+        }
+
+        // Buraya geldiysek Freighter yüklü değil
+        console.log("Freighter NOT installed");
+        setFreighterInstalled(false);
+
+      } catch (e) {
+        console.log("Freighter check error:", e);
+        if (!cancelled) {
+          setFreighterInstalled(false);
         }
       }
-      setFreighterInstalled(false);
     };
-    
-    checkFreighter();
+
+    // 300ms bekle ki extension inject olsun
+    const timer = setTimeout(checkFreighter, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
+  // 2) Extension VARSA ve cüzdan bağlı DEĞİLSE sayfa açılınca 1 kere popup ile bağlanmayı dene
+  useEffect(() => {
+    if (freighterInstalled === true && !wallet.isConnected && !autoConnectTried) {
+      setAutoConnectTried(true);
+      // Bu fonksiyon Freighter popup'ını açacak
+      connectWallet();
+    }
+  }, [freighterInstalled, wallet.isConnected, autoConnectTried]);
+
+  // Bots listesi
   useEffect(() => {
     fetchBots();
   }, []);
 
+  // Cüzdan bağlanınca user status + balance çek
   useEffect(() => {
     if (wallet.isConnected && wallet.publicKey) {
       fetchUserStatus();
@@ -152,7 +212,7 @@ export default function Home() {
 
   const fetchUserStatus = async () => {
     if (!wallet.publicKey) return;
-    
+
     try {
       const res = await fetch(`/api/status?public_key=${encodeURIComponent(wallet.publicKey)}`);
       const data = await res.json();
@@ -166,7 +226,7 @@ export default function Home() {
 
   const checkAccountBalance = async () => {
     if (!wallet.publicKey) return;
-    
+
     try {
       const res = await fetch(`${HORIZON_URL}/accounts/${wallet.publicKey}`);
       if (res.ok) {
@@ -175,9 +235,9 @@ export default function Home() {
         setXlmBalance(parseFloat(balance?.balance || '0').toFixed(2));
       } else if (res.status === 404) {
         setXlmBalance('0 (Unfunded)');
-        setMessage({ 
-          type: 'warning', 
-          text: 'Account not funded! Get free testnet XLM from Stellar Laboratory.' 
+        setMessage({
+          type: 'warning',
+          text: 'Account not funded! Get free testnet XLM from Stellar Laboratory.'
         });
       }
     } catch (error) {
@@ -185,8 +245,10 @@ export default function Home() {
     }
   };
 
+  // FREIGHTER POPUP İLE BAĞLANMA
   const connectWallet = async () => {
-    if (!freighterInstalled) {
+    // Extension kesin yoksa uyar ve hiç deneme
+    if (freighterInstalled === false) {
       setMessage({ type: 'error', text: 'Freighter wallet not found. Please install it first.' });
       return;
     }
@@ -196,25 +258,29 @@ export default function Home() {
 
     try {
       const accessResult = await requestAccess();
-      
+
       if (accessResult.error) {
+        // Hata mesajında Freighter geçiyorsa extension yokmuş gibi davran
+        if (accessResult.error.toLowerCase().includes("freighter")) {
+          setFreighterInstalled(false);
+        }
         throw new Error(accessResult.error);
       }
-      
+
       const pubKey = accessResult.address;
       const networkResult = await getNetwork();
       const network = networkResult.network || 'UNKNOWN';
-      
+
       if (network !== STELLAR_NETWORK) {
-        setMessage({ 
-          type: 'warning', 
-          text: `Please switch to TESTNET in Freighter. Current: ${network}` 
+        setMessage({
+          type: 'warning',
+          text: `Please switch to TESTNET in Freighter. Current: ${network}`
         });
       }
-      
+
       setWallet({ isConnected: true, publicKey: pubKey, network });
       setMessage({ type: 'success', text: `Connected: ${pubKey.substring(0, 8)}...${pubKey.slice(-8)}` });
-      
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Connection failed';
       setMessage({ type: 'error', text: errorMessage });
@@ -248,10 +314,10 @@ export default function Home() {
 
   const handleDeposit = async () => {
     if (!selectedBot || !wallet.publicKey || !freighterInstalled) return;
-    
+
     setActionLoading('deposit');
     setMessage(null);
-    
+
     try {
       const res = await fetch('/api/create-deposit-tx', {
         method: 'POST',
@@ -262,25 +328,25 @@ export default function Home() {
           amount: depositAmount,
         }),
       });
-      
+
       const data = await res.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to create transaction');
       }
-      
+
       setMessage({ type: 'info', text: 'Please sign the transaction in Freighter...' });
-      
+
       const signResult = await signTransaction(data.xdr, {
         networkPassphrase: NETWORK_PASSPHRASE,
       });
-      
+
       if (signResult.error) {
         throw new Error(signResult.error);
       }
-      
+
       const signedXdr = signResult.signedTxXdr;
-      
+
       const submitRes = await fetch('/api/submit-transaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -293,14 +359,14 @@ export default function Home() {
           is_contract: data.is_contract || false,
         }),
       });
-      
+
       const submitData = await submitRes.json();
-      
+
       if (submitData.success) {
         const contractText = submitData.is_contract ? ' (via Smart Contract)' : '';
-        setMessage({ 
-          type: 'success', 
-          text: `${depositAmount} XLM commission deposited${contractText}! $100 simulation started.` 
+        setMessage({
+          type: 'success',
+          text: `${depositAmount} XLM commission deposited${contractText}! $100 simulation started.`
         });
         setShowDepositModal(false);
         fetchUserStatus();
@@ -308,7 +374,7 @@ export default function Home() {
       } else {
         throw new Error(submitData.error || 'Failed to submit transaction');
       }
-      
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Deposit failed';
       if (errorMessage.includes('User declined')) {
@@ -323,10 +389,10 @@ export default function Home() {
 
   const handleTopup = async () => {
     if (!selectedBot || !wallet.publicKey || !freighterInstalled) return;
-    
+
     setActionLoading('topup');
     setMessage(null);
-    
+
     try {
       const res = await fetch('/api/topup', {
         method: 'POST',
@@ -337,25 +403,25 @@ export default function Home() {
           amount: topupAmount,
         }),
       });
-      
+
       const data = await res.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to create transaction');
       }
-      
+
       setMessage({ type: 'info', text: 'Please sign the transaction in Freighter...' });
-      
+
       const signResult = await signTransaction(data.xdr, {
         networkPassphrase: NETWORK_PASSPHRASE,
       });
-      
+
       if (signResult.error) {
         throw new Error(signResult.error);
       }
-      
+
       const signedXdr = signResult.signedTxXdr;
-      
+
       const submitRes = await fetch('/api/submit-transaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -367,13 +433,13 @@ export default function Home() {
           is_topup: true,
         }),
       });
-      
+
       const submitData = await submitRes.json();
-      
+
       if (submitData.success) {
-        setMessage({ 
-          type: 'success', 
-          text: `+${topupAmount} XLM commission balance added!` 
+        setMessage({
+          type: 'success',
+          text: `+${topupAmount} XLM commission balance added!`
         });
         setShowTopupModal(false);
         fetchUserStatus();
@@ -381,7 +447,7 @@ export default function Home() {
       } else {
         throw new Error(submitData.error || 'Failed to submit transaction');
       }
-      
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Top-up failed';
       if (errorMessage.includes('User declined')) {
@@ -397,12 +463,11 @@ export default function Home() {
   // Contract Deposit - deposits directly to smart contract
   const handleContractDeposit = async (botId: string, amount: number) => {
     if (!wallet.publicKey || !freighterInstalled) return;
-    
+
     setActionLoading(`contract-deposit-${botId}`);
     setMessage(null);
-    
+
     try {
-      // Step 1: Create contract deposit XDR
       const res = await fetch('/api/contract/create-deposit-tx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -412,25 +477,23 @@ export default function Home() {
           amount: amount,
         }),
       });
-      
+
       const data = await res.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to create contract transaction');
       }
-      
+
       setMessage({ type: 'info', text: '🔗 Please sign the CONTRACT transaction in Freighter...' });
-      
-      // Step 2: Sign with Freighter
+
       const signResult = await signTransaction(data.xdr, {
         networkPassphrase: NETWORK_PASSPHRASE,
       });
-      
+
       if (signResult.error) {
         throw new Error(signResult.error);
       }
-      
-      // Step 3: Submit signed transaction
+
       const submitRes = await fetch('/api/contract/submit-deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -441,20 +504,20 @@ export default function Home() {
           amount: amount,
         }),
       });
-      
+
       const submitData = await submitRes.json();
-      
+
       if (submitData.success) {
-        setMessage({ 
-          type: 'success', 
-          text: `🔗 Contract deposit successful! ${amount} XLM deposited to smart contract` 
+        setMessage({
+          type: 'success',
+          text: `🔗 Contract deposit successful! ${amount} XLM deposited to smart contract`
         });
         fetchUserStatus();
         checkAccountBalance();
       } else {
         throw new Error(submitData.error || 'Contract deposit failed');
       }
-      
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Contract deposit failed';
       if (errorMessage.includes('User declined')) {
@@ -469,10 +532,10 @@ export default function Home() {
 
   const handleSimulateDay = async (botId: string) => {
     if (!wallet.publicKey) return;
-    
+
     setActionLoading(`simulate-${botId}`);
     setMessage(null);
-    
+
     try {
       const res = await fetch('/api/simulate-day', {
         method: 'POST',
@@ -482,19 +545,17 @@ export default function Home() {
           user_public_key: wallet.publicKey,
         }),
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success) {
-        // Determine scenario
         let scenario: 'profit' | 'loss' | 'below_hwm' = 'profit';
         if (data.profit_usd < 0) {
           scenario = 'loss';
         } else if (data.commission_xlm === 0 && data.profit_usd >= 0) {
           scenario = 'below_hwm';
         }
-        
-        // Show receipt modal
+
         setShowReceipt({
           day: data.day,
           scenario,
@@ -507,7 +568,7 @@ export default function Home() {
           simulation_balance: data.simulation_balance,
           commission_balance: data.commission_balance,
         });
-        
+
         fetchUserStatus();
         checkAccountBalance();
       } else {
@@ -524,16 +585,13 @@ export default function Home() {
     }
   };
 
-
-
   const handleWithdraw = async (botId: string) => {
     if (!wallet.publicKey) return;
-    
+
     setActionLoading(`withdraw-${botId}`);
     setMessage(null);
-    
+
     try {
-      // Step 1: Request withdraw from backend
       const res = await fetch('/api/withdraw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -542,20 +600,18 @@ export default function Home() {
           user_public_key: wallet.publicKey,
         }),
       });
-      
+
       const data = await res.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to withdraw');
       }
-      
-      // Check if withdraw was already processed (no signing needed)
+
       if (data.needs_signing === false) {
-        // Backend already sent the XLM
         if (data.amount_withdrawn > 0) {
-          setMessage({ 
-            type: 'success', 
-            text: `✅ ${data.amount_withdrawn} XLM withdrawn to your wallet!` 
+          setMessage({
+            type: 'success',
+            text: `✅ ${data.amount_withdrawn} XLM withdrawn to your wallet!`
           });
         } else {
           setMessage({ type: 'info', text: 'No balance to withdraw' });
@@ -564,21 +620,18 @@ export default function Home() {
         checkAccountBalance();
         return;
       }
-      
-      // If there's an XDR, we need to sign it (contract withdraw)
+
       if (data.xdr && data.needs_signing) {
         setMessage({ type: 'info', text: '🔗 Please sign the CONTRACT withdraw in Freighter...' });
-        
-        // Step 2: Sign with Freighter
+
         const signResult = await signTransaction(data.xdr, {
           networkPassphrase: NETWORK_PASSPHRASE,
         });
-        
+
         if (signResult.error) {
           throw new Error(signResult.error);
         }
-        
-        // Step 3: Submit signed transaction
+
         const submitRes = await fetch('/api/submit-withdraw', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -588,22 +641,22 @@ export default function Home() {
             user_public_key: wallet.publicKey,
           }),
         });
-        
+
         const submitData = await submitRes.json();
-        
+
         if (submitData.success) {
-          setMessage({ 
-            type: 'success', 
-            text: `🔗 ${submitData.amount_withdrawn} XLM withdrawn from contract to your wallet!` 
+          setMessage({
+            type: 'success',
+            text: `🔗 ${submitData.amount_withdrawn} XLM withdrawn from contract to your wallet!`
           });
         } else {
           throw new Error(submitData.error || 'Withdraw submission failed');
         }
       }
-      
+
       fetchUserStatus();
       checkAccountBalance();
-      
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Withdrawal failed';
       if (errorMessage.includes('User declined')) {
@@ -640,12 +693,12 @@ export default function Home() {
       <header className="header">
         <h1>🐋 Profit Sharing Platform</h1>
         <p>Follow trading bots, simulate with $100 virtual balance, pay commission only on profits!</p>
-        
+
         {/* Stellar Explorer Quick Links */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '0.75rem', 
-          justifyContent: 'center', 
+        <div style={{
+          display: 'flex',
+          gap: '0.75rem',
+          justifyContent: 'center',
           marginTop: '1rem',
           flexWrap: 'wrap'
         }}>
@@ -748,36 +801,61 @@ export default function Home() {
       {/* Wallet Connection Section */}
       <div className="generate-account">
         <h3>🔗 Stellar Wallet Connection</h3>
-        
-        {freighterInstalled === false && (
-          <div className="alert alert-warning" style={{ marginBottom: '1rem' }}>
-            <strong>Freighter Wallet Required!</strong><br />
-            <a 
-              href="https://www.freighter.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              style={{ color: '#0070f3', textDecoration: 'underline' }}
-            >
-              👉 Install Freighter Browser Extension
-            </a>
-            <br />
-            <small>After installation, refresh the page and switch to TESTNET in Freighter settings.</small>
-          </div>
-        )}
-        
+
         {!wallet.isConnected ? (
-          <>
-            <p>Connect your Stellar wallet to deposit commission and start trading simulation.</p>
-            <div className="btn-group">
-              <button 
-                className="btn btn-primary" 
-                onClick={connectWallet}
-                disabled={!freighterInstalled || actionLoading === 'connect'}
-              >
-                {actionLoading === 'connect' ? 'Connecting...' : '🦊 Connect Freighter Wallet'}
-              </button>
-            </div>
-          </>
+          freighterInstalled === false ? (
+            <>
+              <div className="alert alert-warning" style={{ marginBottom: '1rem' }}>
+                <strong>⚠️ Freighter Wallet Not Detected!</strong><br />
+                <p style={{ margin: '0.5rem 0' }}>
+                  You need to install the Freighter browser extension to connect your Stellar wallet.
+                </p>
+              </div>
+              <div className="btn-group" style={{ flexDirection: 'column', gap: '0.75rem' }}>
+                <a
+                  href="https://www.freighter.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary"
+                  style={{ textDecoration: 'none', textAlign: 'center' }}
+                >
+                  🦊 Install Freighter Extension
+                </a>
+                <button
+                  className="btn"
+                  style={{ background: '#e5e7eb', color: '#374151' }}
+                  onClick={() => window.location.reload()}
+                >
+                  🔄 I&apos;ve Installed It - Refresh Page
+                </button>
+              </div>
+              <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#6b7280' }}>
+                After installation, refresh the page and make sure to switch to <strong>TESTNET</strong> in Freighter settings.
+              </p>
+            </>
+          ) : freighterInstalled === null ? (
+            <>
+              <p>Checking for Freighter wallet...</p>
+              <div className="btn-group">
+                <button className="btn btn-primary" disabled>
+                  Connecting...
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>Connect your Stellar wallet to deposit commission and start trading simulation.</p>
+              <div className="btn-group">
+                <button
+                  className="btn btn-primary"
+                  onClick={connectWallet}
+                  disabled={actionLoading === 'connect'}
+                >
+                  {actionLoading === 'connect' ? 'Connecting...' : '🦊 Connect Freighter Wallet'}
+                </button>
+              </div>
+            </>
+          )
         ) : (
           <>
             <div className="keypair-display">
@@ -802,8 +880,8 @@ export default function Home() {
               <button className="btn btn-primary" onClick={checkAccountBalance}>
                 🔄 Refresh Balance
               </button>
-              <button 
-                className="btn" 
+              <button
+                className="btn"
                 style={{ background: '#e5e7eb', color: '#374151' }}
                 onClick={disconnectWallet}
               >
@@ -815,10 +893,10 @@ export default function Home() {
 
         <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', fontSize: '0.85rem' }}>
           <strong>💡 Need Testnet XLM?</strong><br />
-          <a 
-            href="https://laboratory.stellar.org/#account-creator?network=test" 
-            target="_blank" 
-            rel="noopener noreferrer" 
+          <a
+            href="https://laboratory.stellar.org/#account-creator?network=test"
+            target="_blank"
+            rel="noopener noreferrer"
             style={{ color: '#0070f3' }}
           >
             Stellar Laboratory
@@ -829,7 +907,7 @@ export default function Home() {
 
       {/* Bot Grid */}
       <h2 style={{ marginBottom: '1rem' }}>🤖 Trading Bots</h2>
-      
+
       {bots.length === 0 ? (
         <div className="alert alert-warning">
           No bots found. Make sure Python backend is running on port 5328.
@@ -841,10 +919,10 @@ export default function Home() {
             const isActive = !!activeBotInfo;
             const isAccessible = activeBotInfo?.is_accessible ?? false;
             const isExpanded = isActive || expandedBot === bot.id;  // Auto-expand when active
-            
+
             return (
-              <div key={bot.id} className="bot-card" style={{ 
-                border: !isAccessible && isActive ? '2px solid #ef4444' : undefined 
+              <div key={bot.id} className="bot-card" style={{
+                border: !isAccessible && isActive ? '2px solid #ef4444' : undefined
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3>{bot.name}</h3>
@@ -852,9 +930,9 @@ export default function Home() {
                     {isActive ? (isAccessible ? `Day ${activeBotInfo?.current_day || 0}` : '⚠️ No Commission') : 'Inactive'}
                   </span>
                 </div>
-                
+
                 <p className="strategy">{bot.strategy}</p>
-                
+
                 <div className="details">
                   <div className="detail-item" style={{ background: '#fef3c7', padding: '0.5rem', borderRadius: '6px' }}>
                     <div className="detail-label">🧑‍💻 Developer Commission</div>
@@ -874,14 +952,14 @@ export default function Home() {
                   </div>
                   {isActive && activeBotInfo && (
                     <>
-                      <div className="detail-item" style={{ 
+                      <div className="detail-item" style={{
                         background: activeBotInfo.commission_balance > 0 ? '#d1fae5' : '#fee2e2',
                         padding: '0.5rem',
                         borderRadius: '6px'
                       }}>
                         <div className="detail-label">💰 Commission Balance (XLM)</div>
-                        <div className="detail-value" style={{ 
-                          color: activeBotInfo.commission_balance > 0 ? '#059669' : '#dc2626', 
+                        <div className="detail-value" style={{
+                          color: activeBotInfo.commission_balance > 0 ? '#059669' : '#dc2626',
                           fontWeight: 'bold',
                           fontSize: '1.2rem'
                         }}>
@@ -890,7 +968,7 @@ export default function Home() {
                       </div>
                       <div className="detail-item" style={{ background: '#ede9fe', padding: '0.5rem', borderRadius: '6px' }}>
                         <div className="detail-label">📊 Simulation Balance ($)</div>
-                        <div className="detail-value" style={{ 
+                        <div className="detail-value" style={{
                           color: activeBotInfo.simulation_balance >= activeBotInfo.starting_balance ? '#7c3aed' : '#dc2626',
                           fontWeight: 'bold',
                           fontSize: '1.2rem'
@@ -919,7 +997,7 @@ export default function Home() {
                   <div className="profit-section">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                       <h4 style={{ margin: 0 }}>📈 Daily Simulation</h4>
-                      <button 
+                      <button
                         className="btn"
                         style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: '#e5e7eb' }}
                         onClick={() => setExpandedBot(isExpanded ? null : bot.id)}
@@ -927,14 +1005,13 @@ export default function Home() {
                         {isExpanded ? '▲ Hide' : '▼ Table'}
                       </button>
                     </div>
-                    
-                    {/* Warning if commission depleted */}
+
                     {!isAccessible && (
-                      <div style={{ 
-                        background: '#fef2f2', 
-                        border: '1px solid #fecaca', 
-                        padding: '0.75rem', 
-                        borderRadius: '8px', 
+                      <div style={{
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        padding: '0.75rem',
+                        borderRadius: '8px',
                         marginBottom: '0.5rem',
                         fontSize: '0.85rem'
                       }}>
@@ -942,9 +1019,9 @@ export default function Home() {
                         Add more commission to continue.
                       </div>
                     )}
-                    
+
                     <div className="btn-group" style={{ marginBottom: '0.5rem' }}>
-                      <button 
+                      <button
                         className="btn btn-success"
                         onClick={() => handleSimulateDay(bot.id)}
                         disabled={!!actionLoading || !isAccessible}
@@ -954,14 +1031,13 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* Top-up Button */}
-                    <button 
+                    <button
                       className="btn"
                       onClick={() => openTopupModal(bot)}
                       disabled={!!actionLoading}
-                      style={{ 
-                        width: '100%', 
-                        background: '#10b981', 
+                      style={{
+                        width: '100%',
+                        background: '#10b981',
                         color: 'white',
                         marginBottom: '0.5rem'
                       }}
@@ -969,12 +1045,11 @@ export default function Home() {
                       ➕ Add Commission
                     </button>
 
-                    {/* Daily History Table */}
                     {isExpanded && activeBotInfo.daily_history && (
-                      <div style={{ 
-                        maxHeight: '300px', 
-                        overflowY: 'auto', 
-                        border: '1px solid #e5e7eb', 
+                      <div style={{
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                        border: '1px solid #e5e7eb',
                         borderRadius: '8px',
                         marginTop: '0.5rem'
                       }}>
@@ -996,47 +1071,47 @@ export default function Home() {
                                 <td style={{ padding: '0.3rem', fontWeight: 'bold' }}>
                                   {day.day === 0 ? '🏁' : day.day}
                                 </td>
-                                <td style={{ 
-                                  padding: '0.3rem', 
+                                <td style={{
+                                  padding: '0.3rem',
                                   textAlign: 'right',
                                   color: day.performance_percent >= 0 ? '#10b981' : '#ef4444',
                                   fontWeight: 'bold'
                                 }}>
                                   {day.day === 0 ? '-' : `${day.performance_percent >= 0 ? '+' : ''}${day.performance_percent}%`}
                                 </td>
-                                <td style={{ 
-                                  padding: '0.3rem', 
+                                <td style={{
+                                  padding: '0.3rem',
                                   textAlign: 'right',
                                   color: day.profit_usd >= 0 ? '#10b981' : '#ef4444'
                                 }}>
                                   {day.day === 0 ? '-' : `$${day.profit_usd.toFixed(0)}`}
                                 </td>
-                                <td style={{ 
-                                  padding: '0.3rem', 
+                                <td style={{
+                                  padding: '0.3rem',
                                   textAlign: 'right',
                                   color: '#b45309',
                                   background: '#fffbeb'
                                 }}>
                                   {day.day === 0 ? '-' : (day.developer_xlm?.toFixed(4) || '0')}
                                 </td>
-                                <td style={{ 
-                                  padding: '0.3rem', 
+                                <td style={{
+                                  padding: '0.3rem',
                                   textAlign: 'right',
                                   color: '#1d4ed8',
                                   background: '#eff6ff'
                                 }}>
                                   {day.day === 0 ? '-' : (day.platform_xlm?.toFixed(4) || '0')}
                                 </td>
-                                <td style={{ 
-                                  padding: '0.3rem', 
+                                <td style={{
+                                  padding: '0.3rem',
                                   textAlign: 'right',
                                   color: '#f59e0b',
                                   fontWeight: 'bold'
                                 }}>
                                   {day.day === 0 ? '-' : day.commission_xlm.toFixed(4)}
                                 </td>
-                                <td style={{ 
-                                  padding: '0.3rem', 
+                                <td style={{
+                                  padding: '0.3rem',
                                   textAlign: 'right',
                                   color: day.commission_balance > 0 ? '#059669' : '#dc2626',
                                   fontWeight: 'bold'
@@ -1049,8 +1124,8 @@ export default function Home() {
                           <tfoot style={{ background: '#f9fafb', fontWeight: 'bold', fontSize: '0.75rem' }}>
                             <tr>
                               <td colSpan={2} style={{ padding: '0.4rem', textAlign: 'left' }}>TOTAL</td>
-                              <td style={{ 
-                                padding: '0.4rem', 
+                              <td style={{
+                                padding: '0.4rem',
                                 textAlign: 'right',
                                 color: activeBotInfo.total_profit >= 0 ? '#10b981' : '#ef4444'
                               }}>
@@ -1079,7 +1154,7 @@ export default function Home() {
                 {/* Action Buttons */}
                 <div className="btn-group" style={{ marginTop: '1rem' }}>
                   {!isActive ? (
-                    <button 
+                    <button
                       className="btn btn-primary"
                       onClick={() => openDepositModal(bot)}
                       disabled={!wallet.isConnected || actionLoading !== null}
@@ -1087,7 +1162,7 @@ export default function Home() {
                       {wallet.isConnected ? '💰 Deposit & Start' : 'Connect Wallet'}
                     </button>
                   ) : (
-                    <button 
+                    <button
                       className="btn btn-danger"
                       onClick={() => handleWithdraw(bot.id)}
                       disabled={actionLoading !== null}
@@ -1111,7 +1186,7 @@ export default function Home() {
             <p style={{ marginBottom: '1rem', color: '#6b7280' }}>
               Deposit commission balance for <strong>{selectedBot.name}</strong>.
             </p>
-            
+
             <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
               <strong>🎮 What Happens?</strong>
               <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0, fontSize: '0.9rem' }}>
@@ -1121,7 +1196,7 @@ export default function Home() {
                 <li>Bot access closes when commission balance is depleted</li>
               </ul>
             </div>
-            
+
             <div className="form-group">
               <label className="form-label">Commission Amount (XLM)</label>
               <input
@@ -1133,7 +1208,7 @@ export default function Home() {
               />
               <small style={{ color: '#6b7280' }}>Minimum: {selectedBot.min_commission_deposit} XLM</small>
             </div>
-            
+
             <div className="alert alert-info">
               <strong>Transaction Details:</strong><br />
               From: {wallet.publicKey?.substring(0, 12)}...{wallet.publicKey?.slice(-8)}<br />
@@ -1143,15 +1218,15 @@ export default function Home() {
             </div>
 
             <div className="modal-actions">
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={handleDeposit}
                 disabled={actionLoading === 'deposit'}
               >
                 {actionLoading === 'deposit' ? '✍️ Sign in Freighter...' : '✅ Sign & Start'}
               </button>
-              <button 
-                className="btn" 
+              <button
+                className="btn"
                 style={{ background: '#e5e7eb', color: '#374151' }}
                 onClick={() => setShowDepositModal(false)}
               >
@@ -1170,7 +1245,7 @@ export default function Home() {
             <p style={{ marginBottom: '1rem', color: '#6b7280' }}>
               Add more commission balance for <strong>{selectedBot.name}</strong>.
             </p>
-            
+
             <div style={{ background: '#fef3c7', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
               <strong>💡 Info:</strong>
               <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>
@@ -1178,7 +1253,7 @@ export default function Home() {
                 If your balance runs out, bot access closes but you can reset to start fresh.
               </p>
             </div>
-            
+
             <div className="form-group">
               <label className="form-label">Additional Commission Amount (XLM)</label>
               <input
@@ -1189,22 +1264,22 @@ export default function Home() {
                 min="1"
               />
             </div>
-            
+
             <div className="alert alert-info">
               <strong>Transaction Details:</strong><br />
               Amount: +{topupAmount} XLM commission balance
             </div>
 
             <div className="modal-actions">
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={handleTopup}
                 disabled={actionLoading === 'topup'}
               >
                 {actionLoading === 'topup' ? '✍️ Sign in Freighter...' : '✅ Sign & Add'}
               </button>
-              <button 
-                className="btn" 
+              <button
+                className="btn"
                 style={{ background: '#e5e7eb', color: '#374151' }}
                 onClick={() => setShowTopupModal(false)}
               >
@@ -1219,10 +1294,9 @@ export default function Home() {
       {showReceipt && (
         <div className="modal-overlay" onClick={() => setShowReceipt(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-            {/* Receipt Header */}
-            <div style={{ 
-              textAlign: 'center', 
-              borderBottom: '2px dashed #e5e7eb', 
+            <div style={{
+              textAlign: 'center',
+              borderBottom: '2px dashed #e5e7eb',
               paddingBottom: '1rem',
               marginBottom: '1rem'
             }}>
@@ -1232,11 +1306,10 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Scenario-based Content */}
             {showReceipt.scenario === 'profit' && (
-              <div style={{ 
-                background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)', 
-                padding: '1.5rem', 
+              <div style={{
+                background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                padding: '1.5rem',
                 borderRadius: '12px',
                 marginBottom: '1rem'
               }}>
@@ -1247,10 +1320,10 @@ export default function Home() {
                     +{showReceipt.performance_percent}% (+${showReceipt.profit_usd.toFixed(2)})
                   </p>
                 </div>
-                
-                <div style={{ 
-                  background: 'white', 
-                  padding: '1rem', 
+
+                <div style={{
+                  background: 'white',
+                  padding: '1rem',
                   borderRadius: '8px',
                   border: '1px solid #10b981'
                 }}>
@@ -1265,9 +1338,9 @@ export default function Home() {
                     <span>🏢 Platform Fee:</span>
                     <span style={{ color: '#1d4ed8', fontWeight: 'bold' }}>{showReceipt.platform_xlm.toFixed(4)} XLM</span>
                   </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
                     borderTop: '1px solid #e5e7eb',
                     paddingTop: '0.5rem',
                     marginTop: '0.5rem'
@@ -1280,9 +1353,9 @@ export default function Home() {
             )}
 
             {showReceipt.scenario === 'loss' && (
-              <div style={{ 
-                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)', 
-                padding: '1.5rem', 
+              <div style={{
+                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+                padding: '1.5rem',
                 borderRadius: '12px',
                 marginBottom: '1rem'
               }}>
@@ -1293,10 +1366,10 @@ export default function Home() {
                     {showReceipt.performance_percent}% (${showReceipt.profit_usd.toFixed(2)})
                   </p>
                 </div>
-                
-                <div style={{ 
-                  background: 'white', 
-                  padding: '1rem', 
+
+                <div style={{
+                  background: 'white',
+                  padding: '1rem',
                   borderRadius: '8px',
                   border: '1px solid #f87171',
                   textAlign: 'center'
@@ -1312,9 +1385,9 @@ export default function Home() {
             )}
 
             {showReceipt.scenario === 'below_hwm' && (
-              <div style={{ 
-                background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', 
-                padding: '1.5rem', 
+              <div style={{
+                background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                padding: '1.5rem',
                 borderRadius: '12px',
                 marginBottom: '1rem'
               }}>
@@ -1325,10 +1398,10 @@ export default function Home() {
                     +{showReceipt.performance_percent}% (+${showReceipt.profit_usd.toFixed(2)})
                   </p>
                 </div>
-                
-                <div style={{ 
-                  background: 'white', 
-                  padding: '1rem', 
+
+                <div style={{
+                  background: 'white',
+                  padding: '1rem',
                   borderRadius: '8px',
                   border: '1px solid #f59e0b',
                   textAlign: 'center'
@@ -1346,10 +1419,9 @@ export default function Home() {
               </div>
             )}
 
-            {/* Current Status */}
-            <div style={{ 
-              background: '#f9fafb', 
-              padding: '1rem', 
+            <div style={{
+              background: '#f9fafb',
+              padding: '1rem',
               borderRadius: '8px',
               marginBottom: '1rem'
             }}>
@@ -1365,8 +1437,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Close Button */}
-            <button 
+            <button
               className="btn btn-primary"
               onClick={() => setShowReceipt(null)}
               style={{ width: '100%' }}
