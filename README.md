@@ -184,15 +184,17 @@ Total Commission: $10 (10% of profit)
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Apollous1592/Stellar-Hackathon-Project-Whaleer.com.git
-cd Stellar-Hackathon-Project-Whaleer.com
+
 
 # 2. Start Backend (Terminal 1)
+cd Stellar-Hackathon-Project-Whaleer.com
 cd api
 pip install -r requirements.txt
 python index.py
 # ✅ Backend running on http://127.0.0.1:5328
 
 # 3. Start Frontend (Terminal 2)
+cd Stellar-Hackathon-Project-Whaleer.com
 cd frontend
 npm install
 npm run dev
